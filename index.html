@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Hospital Appointment — Walking Skeleton</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body style="font-family: sans-serif; max-width: 820px; margin: 24px auto; padding: 0 16px;">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    function App() {
+      const [clinics, setClinics] = React.useState([]);
+      const [selectedClinic, setSelectedClinic] = React.useState("");
+      const [slots, setSlots] = React.useState([]);
+      const [patientCode, setPatientCode] = React.useState("PAT-000123");
+      const [patientName, setPatientName] = React.useState("Salih Cetin");
+      const [message, setMessage] = React.useState("");
+
+      const loadSlots = (clinicCode) => {
+        const url = clinicCode
+          ? `/api/v1/slots?clinic_code=${encodeURIComponent(clinicCode)}`
+          : "/api/v1/slots";
+        fetch(url)
+          .then((res) => res.json())
+          .then((data) => setSlots(data));
+      };
+
+      React.useEffect(() => {
+        fetch("/api/v1/clinics")
+          .then((res) => res.json())
+          .then((data) => setClinics(data));
+        loadSlots("");
+      }, []);
+
+      const handleClinicChange = (e) => {
+        const code = e.target.value;
+        setSelectedClinic(code);
+        loadSlots(code);
+      };
+
+      const handleBook = async (slotId) => {
+        setMessage("Submitting booking...");
+        const res = await fetch("/api/v1/book", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slot_id: slotId,
+            patient_code: patientCode,
+            patient_name: patientName
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setMessage(`SUCCESS (HTTP 201): Booked Appointment ID ${data.appointment_id} for ${data.patient_code}`);
+          loadSlots(selectedClinic);
+        } else {
+          setMessage(`ERROR (HTTP ${res.status}): ${data.detail}`);
+        }
+      };
+
+      return (
+        <div>
+          <h2>Smart Hospital Appointment System — Walking Skeleton (UI → API → DB)</h2>
+          <hr />
+          <div style={{ marginBottom: "16px" }}>
+            <label><strong>Patient Code: </strong></label>
+            <input value={patientCode} onChange={(e) => setPatientCode(e.target.value)} style={{ marginRight: "12px" }} />
+            <label><strong>Patient Name: </strong></label>
+            <input value={patientName} onChange={(e) => setPatientName(e.target.value)} style={{ marginRight: "12px" }} />
+            <label><strong>Filter Clinic: </strong></label>
+            <select value={selectedClinic} onChange={handleClinicChange}>
+              <option value="">All Clinics</option>
+              {clinics.map((c) => (
+                <option key={c.id} value={c.clinic_code}>
+                  {c.clinic_code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {message && (
+            <p style={{ padding: "10px", background: "#eef6f3", border: "1px solid #1f7a6b" }}>
+              <strong>{message}</strong>
+            </p>
+          )}
+
+          <h3>Available Slots ({slots.length})</h3>
+          <table border="1" cellPadding="6" style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th>Clinic</th>
+                <th>Physician</th>
+                <th>Start Time (UTC)</th>
+                <th>Version</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slots.slice(0, 15).map((s) => (
+                <tr key={s.slot_id}>
+                  <td>{s.clinic_code}</td>
+                  <td>{s.physician_code} — {s.physician_name}</td>
+                  <td>{s.start_time.replace("T", " ").slice(0, 16)}</td>
+                  <td>v{s.version}</td>
+                  <td>
+                    <button onClick={() => handleBook(s.slot_id)}>Book Slot</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
