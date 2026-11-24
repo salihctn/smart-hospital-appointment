@@ -2,82 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Smart Hospital Appointment — Walking Skeleton</title>
+  <title>Smart Hospital Appointment — Week 10 Prototype</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body style="font-family: sans-serif; max-width: 820px; margin: 24px auto; padding: 0 16px;">
+<body style="font-family: sans-serif; max-width: 900px; margin: 24px auto; padding: 0 16px;">
   <div id="root"></div>
 
   <script type="text/babel">
     function App() {
+      const [tab, setTab] = React.useState("book");
       const [clinics, setClinics] = React.useState([]);
       const [selectedClinic, setSelectedClinic] = React.useState("");
       const [slots, setSlots] = React.useState([]);
+      const [appointments, setAppointments] = React.useState([]);
+      const [demand, setDemand] = React.useState([]);
       const [patientCode, setPatientCode] = React.useState("PAT-000123");
       const [patientName, setPatientName] = React.useState("Salih Cetin");
       const [message, setMessage] = React.useState("");
 
       const loadSlots = (clinicCode) => {
-        const url = clinicCode
-          ? `/api/v1/slots?clinic_code=${encodeURIComponent(clinicCode)}`
-          : "/api/v1/slots";
-        fetch(url)
-          .then((res) => res.json())
-          .then((data) => setSlots(data));
+        const url = clinicCode ? `/api/v1/slots?clinic_code=${encodeURIComponent(clinicCode)}` : "/api/v1/slots";
+        fetch(url).then((r) => r.json()).then(setSlots);
+      };
+
+      const loadAppointments = (pCode) => {
+        fetch(`/api/v1/appointments?patient_code=${encodeURIComponent(pCode)}`)
+          .then((r) => r.ok ? r.json() : [])
+          .then(setAppointments);
+      };
+
+      const loadDemand = (clinicCode) => {
+        const url = clinicCode ? `/api/v1/analytics/demand?clinic_code=${encodeURIComponent(clinicCode)}` : "/api/v1/analytics/demand";
+        fetch(url).then((r) => r.json()).then(setDemand);
       };
 
       React.useEffect(() => {
-        fetch("/api/v1/clinics")
-          .then((res) => res.json())
-          .then((data) => setClinics(data));
+        fetch("/api/v1/clinics").then((r) => r.json()).then(setClinics);
         loadSlots("");
+        loadAppointments(patientCode);
+        loadDemand("");
       }, []);
-
-      const handleClinicChange = (e) => {
-        const code = e.target.value;
-        setSelectedClinic(code);
-        loadSlots(code);
-      };
 
       const handleBook = async (slotId) => {
         setMessage("Submitting booking...");
         const res = await fetch("/api/v1/book", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slot_id: slotId,
-            patient_code: patientCode,
-            patient_name: patientName
-          })
+          body: JSON.stringify({ slot_id: slotId, patient_code: patientCode, patient_name: patientName })
         });
         const data = await res.json();
         if (res.ok) {
           setMessage(`SUCCESS (HTTP 201): Booked Appointment ID ${data.appointment_id} for ${data.patient_code}`);
           loadSlots(selectedClinic);
+          loadAppointments(patientCode);
         } else {
           setMessage(`ERROR (HTTP ${res.status}): ${data.detail}`);
         }
       };
 
+      const handleCancel = async (appointmentId) => {
+        setMessage("Cancelling appointment...");
+        const res = await fetch("/api/v1/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ appointment_id: appointmentId, patient_code: patientCode })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setMessage(`CANCELLED (HTTP 200): Appointment ${data.appointment_id} cancelled; slot is now ${data.slot_status}.`);
+          loadSlots(selectedClinic);
+          loadAppointments(patientCode);
+        } else {
+          setMessage(`ERROR (HTTP ${res.status}): ${data.detail}`);
+        }
+      };
+
+      const maxVisits = demand.length > 0 ? Math.max(...demand.map((d) => d.visit_count)) : 1;
+
       return (
         <div>
-          <h2>Smart Hospital Appointment System — Walking Skeleton (UI → API → DB)</h2>
+          <h2>Smart Hospital Appointment System (v2.1)</h2>
+          <div style={{ marginBottom: "14px" }}>
+            <button onClick={() => setTab("book")} style={{ marginRight: "8px", fontWeight: tab === "book" ? "bold" : "normal" }}>
+              1. Browse & Book Slots
+            </button>
+            <button onClick={() => { setTab("my"); loadAppointments(patientCode); }} style={{ marginRight: "8px", fontWeight: tab === "my" ? "bold" : "normal" }}>
+              2. My Appointments ({appointments.filter(a => a.status === "CONFIRMED").length})
+            </button>
+            <button onClick={() => { setTab("demand"); loadDemand(selectedClinic); }} style={{ fontWeight: tab === "demand" ? "bold" : "normal" }}>
+              3. Admin Demand Baseline
+            </button>
+          </div>
           <hr />
-          <div style={{ marginBottom: "16px" }}>
+
+          <div style={{ marginBottom: "14px" }}>
             <label><strong>Patient Code: </strong></label>
-            <input value={patientCode} onChange={(e) => setPatientCode(e.target.value)} style={{ marginRight: "12px" }} />
-            <label><strong>Patient Name: </strong></label>
-            <input value={patientName} onChange={(e) => setPatientName(e.target.value)} style={{ marginRight: "12px" }} />
-            <label><strong>Filter Clinic: </strong></label>
-            <select value={selectedClinic} onChange={handleClinicChange}>
+            <input value={patientCode} onChange={(e) => setPatientCode(e.target.value)} style={{ marginRight: "12px", width: "110px" }} />
+            <label><strong>Name: </strong></label>
+            <input value={patientName} onChange={(e) => setPatientName(e.target.value)} style={{ marginRight: "12px", width: "130px" }} />
+            <label><strong>Clinic: </strong></label>
+            <select value={selectedClinic} onChange={(e) => { setSelectedClinic(e.target.value); loadSlots(e.target.value); loadDemand(e.target.value); }}>
               <option value="">All Clinics</option>
-              {clinics.map((c) => (
-                <option key={c.id} value={c.clinic_code}>
-                  {c.clinic_code} — {c.name}
-                </option>
-              ))}
+              {clinics.map((c) => <option key={c.id} value={c.clinic_code}>{c.clinic_code} — {c.name}</option>)}
             </select>
           </div>
 
@@ -87,37 +115,82 @@
             </p>
           )}
 
-          <h3>Available Slots ({slots.length})</h3>
-          <table border="1" cellPadding="6" style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr>
-                <th>Clinic</th>
-                <th>Physician</th>
-                <th>Start Time (UTC)</th>
-                <th>Version</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {slots.slice(0, 15).map((s) => (
-                <tr key={s.slot_id}>
-                  <td>{s.clinic_code}</td>
-                  <td>{s.physician_code} — {s.physician_name}</td>
-                  <td>{s.start_time.replace("T", " ").slice(0, 16)}</td>
-                  <td>v{s.version}</td>
-                  <td>
-                    <button onClick={() => handleBook(s.slot_id)}>Book Slot</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {tab === "book" && (
+            <div>
+              <h3>Available Future Slots ({slots.length})</h3>
+              <table border="1" cellPadding="6" style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead>
+                  <tr><th>Clinic</th><th>Physician</th><th>Start Time (UTC)</th><th>Version</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  {slots.slice(0, 15).map((s) => (
+                    <tr key={s.slot_id}>
+                      <td>{s.clinic_code}</td>
+                      <td>{s.physician_code} — {s.physician_name}</td>
+                      <td>{s.start_time.replace("T", " ").slice(0, 16)}</td>
+                      <td>v{s.version}</td>
+                      <td><button onClick={() => handleBook(s.slot_id)}>Book Slot</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tab === "my" && (
+            <div>
+              <h3>My Appointments ({patientCode})</h3>
+              <table border="1" cellPadding="6" style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead>
+                  <tr><th>Clinic</th><th>Physician</th><th>Start Time (UTC)</th><th>Status</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  {appointments.map((a) => (
+                    <tr key={a.appointment_id}>
+                      <td>{a.clinic_code}</td>
+                      <td>{a.physician_name}</td>
+                      <td>{a.start_time.replace("T", " ").slice(0, 16)}</td>
+                      <td><strong>{a.status}</strong></td>
+                      <td>
+                        {a.status === "CONFIRMED" ? (
+                          <button onClick={() => handleCancel(a.appointment_id)}>Cancel (2h Rule)</button>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {appointments.length === 0 && <tr><td colSpan="5">No appointments found for {patientCode}.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tab === "demand" && (
+            <div>
+              <h3>Historical Demand Baseline (14-Day Synthetic Visit History)</h3>
+              <table border="1" cellPadding="6" style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead>
+                  <tr><th>Clinic</th><th>Hour of Day</th><th>Total Visits</th><th>Visual Distribution</th></tr>
+                </thead>
+                <tbody>
+                  {demand.map((d, idx) => (
+                    <tr key={idx}>
+                      <td>{d.clinic_code}</td>
+                      <td>{String(d.hour_of_day).padStart(2, "0")}:00</td>
+                      <td>{d.visit_count}</td>
+                      <td>
+                        <div style={{ background: "#1f7a6b", height: "14px", width: `${Math.round((d.visit_count / maxVisits) * 100)}%` }}></div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>
